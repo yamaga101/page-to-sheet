@@ -6,19 +6,44 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Check if tab is scriptable based on callback tab object
+function isTabAccessible(tab) {
+  if (!tab?.id) return false;
+  const url = tab.url || "";
+  // Cannot inject scripts into chrome:// or extension pages
+  return url !== "" && !url.startsWith("chrome://") && !url.startsWith("chrome-extension://");
+}
+
+// Execute script on tab with graceful error handling
+async function safeExecuteScript(tabId, func, args = []) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func,
+      args,
+    });
+    return results[0]?.result ?? null;
+  } catch (err) {
+    console.warn("executeScript failed:", err.message);
+    return null;
+  }
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "copyToSheet") return;
 
   let title;
   let url;
 
+  const tabAccessible = isTabAccessible(tab);
+
   try {
     if (info.linkUrl) {
-      // Right-clicked on a link - get link text
+      // Right-clicked on a link
       url = info.linkUrl;
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (targetUrl) => {
+
+      if (tabAccessible) {
+        const linkText = await safeExecuteScript(tab.id, (targetUrl) => {
           for (const link of document.querySelectorAll("a")) {
             if (link.href === targetUrl) {
               const text =
@@ -30,33 +55,35 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             }
           }
           return null;
-        },
-        args: [info.linkUrl],
-      });
-      title = results[0]?.result || info.linkUrl;
+        }, [info.linkUrl]);
+        title = linkText || info.linkUrl;
+      } else {
+        title = info.linkUrl;
+      }
     } else {
       // Right-clicked on page
-      title = tab.title;
-      url = tab.url;
+      title = tab?.title || "Untitled";
+      url = tab?.url || info.pageUrl;
     }
 
-    // Copy to clipboard (tab-separated: title\tURL)
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: (text) => {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      },
-      args: [`${title}\t${url}`],
-    });
+    // Copy to clipboard
+    const clipboardText = `${title}\t${url}`;
+    if (tabAccessible) {
+      await safeExecuteScript(tab.id, (text) => {
+        navigator.clipboard.writeText(text).catch(() => {
+          // Fallback for older browsers
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.cssText = "position:fixed;opacity:0;";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        });
+      }, [clipboardText]);
+    }
 
-    // Send to GAS Web App
+    // Send to GAS Web App (independent of tab state)
     const { gasUrl } = await chrome.storage.sync.get("gasUrl");
     let sheetResult = false;
 
@@ -74,16 +101,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       }
     }
 
-    // Show toast notification
-    const message = sheetResult
-      ? "コピー & スプレッドシートに追記しました"
-      : gasUrl
-        ? "コピーしました（スプレッドシート追記に失敗）"
-        : "コピーしました（GAS URLが未設定）";
+    // Show toast notification (only if tab is accessible)
+    if (tabAccessible) {
+      const message = sheetResult
+        ? "コピー & スプレッドシートに追記しました"
+        : gasUrl
+          ? "コピーしました（スプレッドシート追記に失敗）"
+          : "コピーしました（GAS URLが未設定）";
 
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: (msg) => {
+      await safeExecuteScript(tab.id, (msg) => {
         const toast = document.createElement("div");
         toast.textContent = msg;
         toast.style.cssText =
@@ -96,9 +122,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
           toast.style.opacity = "0";
           setTimeout(() => toast.remove(), 300);
         }, 2000);
-      },
-      args: [message],
-    });
+      }, [message]);
+    }
   } catch (err) {
     console.error("Context menu action failed:", err);
   }
