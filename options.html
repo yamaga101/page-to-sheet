@@ -4,113 +4,58 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 380px;
+      width: 420px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
       color: #333;
     }
-    h1 {
-      font-size: 16px;
-      margin: 0 0 16px;
-    }
-    h2 {
-      font-size: 14px;
-      margin: 16px 0 8px;
-      padding-top: 12px;
-      border-top: 1px solid #eee;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
+    h1 { font-size: 16px; margin: 0 0 16px; }
+    h2 { font-size: 14px; margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid #eee; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
     input[type="text"] {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 13px;
-      box-sizing: border-box;
+      width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 13px; box-sizing: border-box;
     }
-    input[type="text"]:focus {
-      outline: none;
-      border-color: #4285f4;
-      box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
-    }
+    input[type="text"]:focus { outline: none; border-color: #4285f4; box-shadow: 0 0 0 2px rgba(66,133,244,0.2); }
     button {
-      padding: 6px 16px;
-      background: #4285f4;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      font-size: 13px;
-      cursor: pointer;
+      padding: 6px 14px; background: #4285f4; color: #fff; border: none;
+      border-radius: 4px; font-size: 13px; cursor: pointer;
     }
-    button:hover {
-      background: #3367d6;
+    button:hover { background: #3367d6; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-danger { background: #e0e0e0; color: #d32f2f; }
+    .btn-danger:hover { background: #ffcdd2; }
+    .btn-ghost { background: #f0f0f0; color: #333; }
+    .btn-ghost:hover { background: #e0e0e0; }
+    .status { margin-top: 8px; font-size: 13px; color: #0d9; min-height: 20px; }
+
+    .group-card {
+      border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
+      margin-bottom: 10px; background: #fafafa;
     }
-    .btn-small {
-      padding: 4px 10px;
-      font-size: 12px;
-      background: #e0e0e0;
-      color: #333;
+    .group-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
     }
-    .btn-small:hover {
-      background: #ccc;
+    .group-name { font-weight: 700; font-size: 14px; }
+    .group-name-input {
+      font-weight: 700; font-size: 14px; border: 1px solid #4285f4; border-radius: 4px;
+      padding: 2px 6px; width: 120px;
     }
-    .btn-danger {
-      background: #e0e0e0;
-      color: #d32f2f;
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .tag-chip {
+      display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+      background: #e8f0fe; border-radius: 16px; font-size: 13px; color: #1a73e8;
     }
-    .btn-danger:hover {
-      background: #ffcdd2;
+    .tag-chip .remove {
+      cursor: pointer; font-size: 14px; color: #999; line-height: 1;
     }
-    .status {
-      margin-top: 8px;
-      font-size: 13px;
-      color: #0d9;
-      min-height: 20px;
-    }
-    .cat-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
-    .cat-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 10px;
-      background: #e8f0fe;
-      border-radius: 16px;
-      font-size: 13px;
-      color: #1a73e8;
-    }
-    .cat-chip .remove {
-      cursor: pointer;
-      font-size: 14px;
-      color: #999;
-      line-height: 1;
-    }
-    .cat-chip .remove:hover {
-      color: #d32f2f;
-    }
-    .add-cat {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-    .add-cat input {
-      flex: 1;
-    }
-    .hint {
-      margin-top: 12px;
-      font-size: 12px;
-      color: #888;
-      line-height: 1.5;
-    }
+    .tag-chip .remove:hover { color: #d32f2f; }
+    .add-row { display: flex; gap: 6px; }
+    .add-row input { flex: 1; padding: 6px 8px; font-size: 13px; }
+
+    .add-group { margin-top: 8px; }
+    .hint { margin-top: 12px; font-size: 12px; color: #888; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -121,19 +66,20 @@
   <button id="saveUrl" style="margin-top:8px;">保存</button>
   <div class="status" id="urlStatus"></div>
 
-  <h2>カテゴリ管理</h2>
-  <div class="cat-list" id="catList"></div>
-  <div class="add-cat">
-    <input type="text" id="newCat" placeholder="新しいカテゴリ名">
-    <button id="addCat" class="btn-small" style="background:#4285f4;color:#fff;">追加</button>
+  <h2>タググループ管理</h2>
+  <div id="groupsContainer"></div>
+  <div class="add-group">
+    <div class="add-row">
+      <input type="text" id="newGroupName" placeholder="新しいグループ名（例: 優先度）">
+      <button id="addGroup" class="btn-sm">グループ追加</button>
+    </div>
   </div>
-  <div class="status" id="catStatus"></div>
 
   <div class="hint">
-    <strong>使い方（3通り）</strong><br>
-    1. 拡張アイコンをクリック → パネルで送信<br>
-    2. Ctrl+Shift+S (Mac: Cmd+Shift+S) → 同上<br>
-    3. 右クリックメニュー → タグなしで即送信
+    <strong>使い方</strong><br>
+    1. 拡張アイコンクリック / Cmd+Shift+S → パネルで送信<br>
+    2. 右クリックメニュー → タグなしで即送信<br>
+    3. タグなしのグループはパネルで自由入力欄として表示
   </div>
   <script src="options.js"></script>
 </body>

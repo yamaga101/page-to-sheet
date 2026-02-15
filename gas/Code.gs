@@ -1,10 +1,10 @@
 /**
  * POST request handler for Page to Sheet Chrome Extension.
- * Columns: [datetime, title, url, category, tags]
+ * Columns: [datetime, title, url, tagGroup1, tagGroup2, tagGroup3, ...]
  *
  * Features:
- * - Duplicate URL detection: moves existing row to bottom (preserves tags/category)
- * - Supports category and tags fields
+ * - Duplicate URL detection: moves existing row to bottom (preserves tag values)
+ * - Supports multiple tag group columns
  *
  * Deploy as: Web App
  * - Execute as: Me
@@ -20,32 +20,27 @@ function doPost(e) {
     "yyyy/MM/dd HH:mm:ss"
   );
 
-  var newCategory = data.category || "";
-  var newTags = data.tags || "";
+  var tagValues = data.tagValues || [];
 
   // Check for duplicate URL
   var existingRow = findRowByUrl(sheet, data.url);
 
   if (existingRow) {
-    // Preserve existing data and merge
-    var existingData = sheet.getRange(existingRow, 1, 1, 5).getValues()[0];
-    var existingCategory = existingData[3] || "";
-    var existingTags = existingData[4] || "";
+    var existingData = sheet.getRange(existingRow, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-    // Use new category if provided, otherwise keep existing
-    var category = newCategory || existingCategory;
+    // Merge tag values: keep existing if new is empty
+    var mergedTags = [];
+    var maxLen = Math.max(tagValues.length, existingData.length - 3);
+    for (var i = 0; i < maxLen; i++) {
+      var newVal = i < tagValues.length ? tagValues[i] : "";
+      var existVal = (i + 3) < existingData.length ? (existingData[i + 3] || "") : "";
+      mergedTags.push(newVal || existVal);
+    }
 
-    // Merge tags (union of existing and new, deduplicated)
-    var tags = mergeTags(existingTags, newTags);
-
-    // Delete old row
     sheet.deleteRow(existingRow);
-
-    // Append at bottom with merged data
-    sheet.appendRow([datetime, data.title, data.url, category, tags]);
+    sheet.appendRow([datetime, data.title, data.url].concat(mergedTags));
   } else {
-    // New entry
-    sheet.appendRow([datetime, data.title, data.url, newCategory, newTags]);
+    sheet.appendRow([datetime, data.title, data.url].concat(tagValues));
   }
 
   return ContentService.createTextOutput(
@@ -68,21 +63,4 @@ function findRowByUrl(sheet, url) {
     }
   }
   return null;
-}
-
-/**
- * Merge two comma-separated tag strings, removing duplicates.
- */
-function mergeTags(existing, incoming) {
-  var existingArr = existing ? existing.split(",").map(function(t) { return t.trim(); }).filter(Boolean) : [];
-  var incomingArr = incoming ? incoming.split(",").map(function(t) { return t.trim(); }).filter(Boolean) : [];
-
-  var merged = existingArr.slice();
-  incomingArr.forEach(function(tag) {
-    if (merged.indexOf(tag) === -1) {
-      merged.push(tag);
-    }
-  });
-
-  return merged.join(", ");
 }

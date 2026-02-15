@@ -1,4 +1,8 @@
-const DEFAULT_CATEGORIES = ["仕事", "学習", "趣味", "あとで読む", "参考資料"];
+const DEFAULT_TAG_GROUPS = [
+  { name: "種別", tags: ["仕事", "プライベート"] },
+  { name: "相手", tags: [] },
+  { name: "ステータス", tags: ["未着手", "進行中", "アーカイブ"] },
+];
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -7,10 +11,10 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ["page", "link"],
   });
 
-  // Initialize default categories if not set
-  chrome.storage.sync.get("categories", ({ categories }) => {
-    if (!categories) {
-      chrome.storage.sync.set({ categories: DEFAULT_CATEGORIES });
+  // Initialize default tag groups if not set
+  chrome.storage.sync.get("tagGroups", ({ tagGroups }) => {
+    if (!tagGroups) {
+      chrome.storage.sync.set({ tagGroups: DEFAULT_TAG_GROUPS });
     }
   });
 });
@@ -73,7 +77,7 @@ async function copyToClipboard(tab, title, url) {
 }
 
 // Send data to GAS Web App
-async function postToGas(title, url, category, tags) {
+async function postToGas(title, url, tagValues) {
   const { gasUrl } = await chrome.storage.sync.get("gasUrl");
   if (!gasUrl) return { ok: false, configured: false };
 
@@ -81,7 +85,7 @@ async function postToGas(title, url, category, tags) {
     const response = await fetch(gasUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, url, category, tags }),
+      body: JSON.stringify({ title, url, tagValues }),
       redirect: "follow",
     });
     if (!response.ok) return { ok: false, configured: true };
@@ -93,14 +97,22 @@ async function postToGas(title, url, category, tags) {
   }
 }
 
-// Inject tag/category panel into page
+// Build result message
+function buildMessage(result) {
+  if (result.ok && result.duplicate) return "コピー & 既存エントリを最下部に移動しました";
+  if (result.ok) return "コピー & スプレッドシートに追記しました";
+  if (!result.configured) return "コピーしました（GAS URLが未設定）";
+  return "コピーしました（スプレッドシート追記に失敗）";
+}
+
+// Inject tag group panel into page
 async function showPanel(tab) {
   if (!isTabAccessible(tab)) return;
 
-  const { categories } = await chrome.storage.sync.get("categories");
-  const cats = categories || DEFAULT_CATEGORIES;
+  const { tagGroups } = await chrome.storage.sync.get("tagGroups");
+  const groups = tagGroups || DEFAULT_TAG_GROUPS;
 
-  await safeExecuteScript(tab.id, (pageTitle, pageUrl, categoryList) => {
+  await safeExecuteScript(tab.id, (pageTitle, pageUrl, groupsData) => {
     // Remove existing panel if any
     const existing = document.getElementById("__pts_panel_host");
     if (existing) existing.remove();
@@ -109,6 +121,24 @@ async function showPanel(tab) {
     host.id = "__pts_panel_host";
     host.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;z-index:2147483647;";
     const shadow = host.attachShadow({ mode: "closed" });
+
+    // Build tag group HTML
+    const groupsHtml = groupsData.map((g, i) => {
+      if (g.tags.length === 0) {
+        return `
+          <div class="field">
+            <div class="field-label">${g.name}</div>
+            <input type="text" class="group-input" data-index="${i}" placeholder="${g.name}を入力">
+          </div>`;
+      }
+      return `
+        <div class="field">
+          <div class="field-label">${g.name}</div>
+          <div class="tag-grid" data-index="${i}">
+            ${g.tags.map((t) => `<button class="tag-btn">${t}</button>`).join("")}
+          </div>
+        </div>`;
+    }).join("");
 
     shadow.innerHTML = `
       <style>
@@ -120,7 +150,8 @@ async function showPanel(tab) {
         }
         .panel {
           background: #fff; border-radius: 12px; padding: 20px; width: 420px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.2); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           color: #333; font-size: 14px;
         }
         .panel-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
@@ -132,21 +163,19 @@ async function showPanel(tab) {
         }
         .page-info-title { font-weight: 600; }
         .page-info-url { color: #666; font-size: 12px; }
-        .cat-grid {
-          display: flex; flex-wrap: wrap; gap: 6px;
-        }
-        .cat-btn {
+        .tag-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag-btn {
           padding: 6px 14px; border-radius: 20px; border: 1.5px solid #ddd;
           background: #fff; font-size: 13px; cursor: pointer; color: #333;
           transition: all 0.15s;
         }
-        .cat-btn:hover { border-color: #4285f4; color: #4285f4; }
-        .cat-btn.selected { background: #4285f4; color: #fff; border-color: #4285f4; }
-        input[type="text"] {
+        .tag-btn:hover { border-color: #4285f4; color: #4285f4; }
+        .tag-btn.selected { background: #4285f4; color: #fff; border-color: #4285f4; }
+        .group-input {
           width: 100%; padding: 8px 10px; border: 1.5px solid #ddd; border-radius: 6px;
           font-size: 13px; outline: none; font-family: inherit;
         }
-        input[type="text"]:focus { border-color: #4285f4; }
+        .group-input:focus { border-color: #4285f4; }
         .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
         .btn {
           padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer;
@@ -167,14 +196,7 @@ async function showPanel(tab) {
               <div class="page-info-url">${pageUrl.replace(/</g, "&lt;")}</div>
             </div>
           </div>
-          <div class="field">
-            <div class="field-label">カテゴリ</div>
-            <div class="cat-grid" id="catGrid"></div>
-          </div>
-          <div class="field">
-            <div class="field-label">タグ（カンマ区切り）</div>
-            <input type="text" id="tagsInput" placeholder="例: API, React, 後で試す">
-          </div>
+          ${groupsHtml}
           <div class="actions">
             <button class="btn btn-secondary" id="cancelBtn">キャンセル</button>
             <button class="btn btn-primary" id="sendBtn">送信</button>
@@ -183,41 +205,44 @@ async function showPanel(tab) {
       </div>
     `;
 
-    // Build category buttons
-    const catGrid = shadow.getElementById("catGrid");
-    let selectedCategory = "";
-    categoryList.forEach((cat) => {
-      const btn = document.createElement("button");
-      btn.className = "cat-btn";
-      btn.textContent = cat;
-      btn.addEventListener("click", () => {
-        shadow.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("selected"));
-        if (selectedCategory === cat) {
-          selectedCategory = "";
-        } else {
-          btn.classList.add("selected");
-          selectedCategory = cat;
-        }
-      });
-      catGrid.appendChild(btn);
-    });
+    // Track selections per group
+    const selections = groupsData.map(() => "");
 
-    const tagsInput = shadow.getElementById("tagsInput");
+    // Wire up tag button clicks (chip toggle)
+    shadow.querySelectorAll(".tag-grid").forEach((grid) => {
+      const idx = parseInt(grid.dataset.index);
+      grid.querySelectorAll(".tag-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const tag = btn.textContent;
+          if (selections[idx] === tag) {
+            selections[idx] = "";
+            btn.classList.remove("selected");
+          } else {
+            grid.querySelectorAll(".tag-btn").forEach((b) => b.classList.remove("selected"));
+            btn.classList.add("selected");
+            selections[idx] = tag;
+          }
+        });
+      });
+    });
 
     // Send handler
     const send = () => {
-      const tags = tagsInput.value.trim();
+      // Collect free-text inputs
+      shadow.querySelectorAll(".group-input").forEach((input) => {
+        const idx = parseInt(input.dataset.index);
+        selections[idx] = input.value.trim();
+      });
+
       chrome.runtime.sendMessage({
         action: "sendFromPanel",
         title: pageTitle,
         url: pageUrl,
-        category: selectedCategory,
-        tags: tags,
+        tagValues: selections,
       });
       host.remove();
     };
 
-    // Cancel handler
     const cancel = () => host.remove();
 
     shadow.getElementById("sendBtn").addEventListener("click", send);
@@ -226,15 +251,17 @@ async function showPanel(tab) {
       if (e.target === e.currentTarget) cancel();
     });
 
-    // Keyboard: Enter to send, Escape to cancel
     shadow.addEventListener("keydown", (e) => {
       if (e.key === "Escape") cancel();
       if (e.key === "Enter" && e.target.tagName !== "BUTTON") send();
     });
 
     document.body.appendChild(host);
-    tagsInput.focus();
-  }, [tab.title || "Untitled", tab.url, cats]);
+
+    // Focus first input if exists, otherwise panel
+    const firstInput = shadow.querySelector(".group-input");
+    if (firstInput) firstInput.focus();
+  }, [tab.title || "Untitled", tab.url, groups]);
 }
 
 // Listen for messages from injected panel
@@ -244,25 +271,14 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   (async () => {
     const tab = sender.tab;
     await copyToClipboard(tab, msg.title, msg.url);
-    const result = await postToGas(msg.title, msg.url, msg.category, msg.tags);
-
-    let message;
-    if (result.ok && result.duplicate) {
-      message = "コピー & 既存エントリを最下部に移動しました";
-    } else if (result.ok) {
-      message = "コピー & スプレッドシートに追記しました";
-    } else if (!result.configured) {
-      message = "コピーしました（GAS URLが未設定）";
-    } else {
-      message = "コピーしました（スプレッドシート追記に失敗）";
-    }
-    await showToast(tab, message);
+    const result = await postToGas(msg.title, msg.url, msg.tagValues);
+    await showToast(tab, buildMessage(result));
   })();
 
-  return true; // async response
+  return true;
 });
 
-// Context menu handler (quick send without panel)
+// Context menu handler (quick send without tags)
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "copyToSheet") return;
 
@@ -297,19 +313,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
 
     await copyToClipboard(tab, title, url);
-    const result = await postToGas(title, url, "", "");
-
-    let message;
-    if (result.ok) {
-      message = result.duplicate
-        ? "コピー & 既存エントリを最下部に移動しました"
-        : "コピー & スプレッドシートに追記しました";
-    } else if (!result.configured) {
-      message = "コピーしました（GAS URLが未設定）";
-    } else {
-      message = "コピーしました（スプレッドシート追記に失敗）";
-    }
-    await showToast(tab, message);
+    const result = await postToGas(title, url, []);
+    await showToast(tab, buildMessage(result));
   } catch (err) {
     console.error("Context menu action failed:", err);
   }

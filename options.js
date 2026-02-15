@@ -1,10 +1,9 @@
 const gasUrlInput = document.getElementById("gasUrl");
 const saveUrlBtn = document.getElementById("saveUrl");
 const urlStatus = document.getElementById("urlStatus");
-const catList = document.getElementById("catList");
-const newCatInput = document.getElementById("newCat");
-const addCatBtn = document.getElementById("addCat");
-const catStatus = document.getElementById("catStatus");
+const groupsContainer = document.getElementById("groupsContainer");
+const newGroupNameInput = document.getElementById("newGroupName");
+const addGroupBtn = document.getElementById("addGroup");
 
 // --- GAS URL ---
 
@@ -14,66 +13,152 @@ chrome.storage.sync.get("gasUrl", ({ gasUrl }) => {
 
 saveUrlBtn.addEventListener("click", () => {
   chrome.storage.sync.set({ gasUrl: gasUrlInput.value.trim() }, () => {
-    showStatus(urlStatus, "保存しました");
+    flash(urlStatus, "保存しました");
   });
 });
 
-// --- Categories ---
+// --- Tag Groups ---
 
-function renderCategories(categories) {
-  catList.innerHTML = "";
-  categories.forEach((cat, i) => {
-    const chip = document.createElement("span");
-    chip.className = "cat-chip";
-    chip.innerHTML = `${cat}<span class="remove" data-index="${i}">&times;</span>`;
-    catList.appendChild(chip);
+let tagGroups = [];
+
+function loadGroups() {
+  chrome.storage.sync.get("tagGroups", ({ tagGroups: groups }) => {
+    tagGroups = groups || [];
+    render();
   });
+}
 
-  catList.querySelectorAll(".remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.dataset.index);
-      categories.splice(idx, 1);
-      saveCategories(categories);
+function saveGroups(cb) {
+  chrome.storage.sync.set({ tagGroups }, () => {
+    render();
+    if (cb) cb();
+  });
+}
+
+function render() {
+  groupsContainer.innerHTML = "";
+  tagGroups.forEach((group, gi) => {
+    const card = document.createElement("div");
+    card.className = "group-card";
+
+    // Header: group name + delete button
+    const header = document.createElement("div");
+    header.className = "group-header";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name";
+    nameSpan.textContent = group.name;
+    nameSpan.addEventListener("click", () => {
+      nameSpan.style.display = "none";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "group-name-input";
+      input.value = group.name;
+      header.insertBefore(input, nameSpan);
+      input.focus();
+      input.select();
+
+      const commit = () => {
+        const val = input.value.trim();
+        if (val) tagGroups[gi].name = val;
+        input.remove();
+        nameSpan.style.display = "";
+        saveGroups();
+      };
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") { input.remove(); nameSpan.style.display = ""; }
+      });
     });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn-sm btn-danger";
+    deleteBtn.textContent = "削除";
+    deleteBtn.addEventListener("click", () => {
+      tagGroups.splice(gi, 1);
+      saveGroups();
+    });
+
+    header.appendChild(nameSpan);
+    header.appendChild(deleteBtn);
+    card.appendChild(header);
+
+    // Tag chips
+    const tagList = document.createElement("div");
+    tagList.className = "tag-list";
+    group.tags.forEach((tag, ti) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.innerHTML = `${esc(tag)}<span class="remove">&times;</span>`;
+      chip.querySelector(".remove").addEventListener("click", () => {
+        tagGroups[gi].tags.splice(ti, 1);
+        saveGroups();
+      });
+      tagList.appendChild(chip);
+    });
+    card.appendChild(tagList);
+
+    // Add tag input
+    const addRow = document.createElement("div");
+    addRow.className = "add-row";
+    const tagInput = document.createElement("input");
+    tagInput.type = "text";
+    tagInput.placeholder = "タグを追加";
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn-sm";
+    addBtn.textContent = "追加";
+
+    const addTag = () => {
+      const val = tagInput.value.trim();
+      if (!val) return;
+      if (tagGroups[gi].tags.includes(val)) {
+        tagInput.value = "";
+        return;
+      }
+      tagGroups[gi].tags.push(val);
+      tagInput.value = "";
+      saveGroups();
+    };
+    addBtn.addEventListener("click", addTag);
+    tagInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addTag();
+    });
+
+    addRow.appendChild(tagInput);
+    addRow.appendChild(addBtn);
+    card.appendChild(addRow);
+
+    groupsContainer.appendChild(card);
   });
 }
 
-function saveCategories(categories) {
-  chrome.storage.sync.set({ categories }, () => {
-    renderCategories(categories);
-    showStatus(catStatus, "更新しました");
-  });
-}
-
-chrome.storage.sync.get("categories", ({ categories }) => {
-  renderCategories(categories || []);
+// Add new group
+addGroupBtn.addEventListener("click", addGroup);
+newGroupNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") addGroup();
 });
 
-addCatBtn.addEventListener("click", addCategory);
-newCatInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") addCategory();
-});
-
-function addCategory() {
-  const name = newCatInput.value.trim();
+function addGroup() {
+  const name = newGroupNameInput.value.trim();
   if (!name) return;
-
-  chrome.storage.sync.get("categories", ({ categories }) => {
-    const cats = categories || [];
-    if (cats.includes(name)) {
-      showStatus(catStatus, "既に存在します", true);
-      return;
-    }
-    cats.push(name);
-    newCatInput.value = "";
-    saveCategories(cats);
-  });
+  if (tagGroups.some((g) => g.name === name)) return;
+  tagGroups.push({ name, tags: [] });
+  newGroupNameInput.value = "";
+  saveGroups();
 }
 
 // --- Utility ---
 
-function showStatus(el, text, isError) {
+function flash(el, text, isError) {
   el.textContent = text;
   el.style.color = isError ? "#d32f2f" : "#0d9";
   setTimeout(() => { el.textContent = ""; }, 2000);
 }
+
+function esc(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Init
+loadGroups();
