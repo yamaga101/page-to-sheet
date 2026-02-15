@@ -136,18 +136,32 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+// Send active tab helper (shared by shortcut and icon click)
+async function sendActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+
+  const title = tab.title || "Untitled";
+  const url = tab.url;
+
+  await sendToSheet(tab, title, url);
+}
+
+// Extension icon click handler
+chrome.action.onClicked.addListener(async () => {
+  try {
+    await sendActiveTab();
+  } catch (err) {
+    console.error("Icon click action failed:", err);
+  }
+});
+
 // Keyboard shortcut handler
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "send-page-to-sheet") return;
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
-
-    const title = tab.title || "Untitled";
-    const url = tab.url;
-
-    await sendToSheet(tab, title, url);
+    await sendActiveTab();
   } catch (err) {
     console.error("Keyboard shortcut action failed:", err);
   }
