@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 360px;
+      width: 380px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 14px;
@@ -13,6 +13,12 @@
     h1 {
       font-size: 16px;
       margin: 0 0 16px;
+    }
+    h2 {
+      font-size: 14px;
+      margin: 16px 0 8px;
+      padding-top: 12px;
+      border-top: 1px solid #eee;
     }
     label {
       display: block;
@@ -33,23 +39,71 @@
       box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
     }
     button {
-      margin-top: 12px;
-      padding: 8px 20px;
+      padding: 6px 16px;
       background: #4285f4;
       color: #fff;
       border: none;
       border-radius: 4px;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
     }
     button:hover {
       background: #3367d6;
+    }
+    .btn-small {
+      padding: 4px 10px;
+      font-size: 12px;
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-small:hover {
+      background: #ccc;
+    }
+    .btn-danger {
+      background: #e0e0e0;
+      color: #d32f2f;
+    }
+    .btn-danger:hover {
+      background: #ffcdd2;
     }
     .status {
       margin-top: 8px;
       font-size: 13px;
       color: #0d9;
       min-height: 20px;
+    }
+    .cat-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .cat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: #e8f0fe;
+      border-radius: 16px;
+      font-size: 13px;
+      color: #1a73e8;
+    }
+    .cat-chip .remove {
+      cursor: pointer;
+      font-size: 14px;
+      color: #999;
+      line-height: 1;
+    }
+    .cat-chip .remove:hover {
+      color: #d32f2f;
+    }
+    .add-cat {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .add-cat input {
+      flex: 1;
     }
     .hint {
       margin-top: 12px;
@@ -61,15 +115,25 @@
 </head>
 <body>
   <h1>Page to Sheet 設定</h1>
+
   <label for="gasUrl">GAS Web App URL</label>
   <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/.../exec">
-  <button id="save">保存</button>
-  <div class="status" id="status"></div>
+  <button id="saveUrl" style="margin-top:8px;">保存</button>
+  <div class="status" id="urlStatus"></div>
+
+  <h2>カテゴリ管理</h2>
+  <div class="cat-list" id="catList"></div>
+  <div class="add-cat">
+    <input type="text" id="newCat" placeholder="新しいカテゴリ名">
+    <button id="addCat" class="btn-small" style="background:#4285f4;color:#fff;">追加</button>
+  </div>
+  <div class="status" id="catStatus"></div>
+
   <div class="hint">
     <strong>使い方（3通り）</strong><br>
-    1. 拡張アイコンをクリック → 閲覧中のページを追記<br>
+    1. 拡張アイコンをクリック → パネルで送信<br>
     2. Ctrl+Shift+S (Mac: Cmd+Shift+S) → 同上<br>
-    3. 右クリックメニュー → ページまたはリンク先を追記
+    3. 右クリックメニュー → タグなしで即送信
   </div>
   <script src="options.js"></script>
 </body>
