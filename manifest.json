@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Page to Sheet",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "ページのタイトルとURLをGoogleスプレッドシートに自動追記するChrome拡張",
   "permissions": [
     "contextMenus",
@@ -18,5 +18,14 @@
   },
   "action": {
     "default_popup": "popup.html"
+  },
+  "commands": {
+    "send-page-to-sheet": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "現在のページをスプレッドシートに記録"
+    }
   }
 }

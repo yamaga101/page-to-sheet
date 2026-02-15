@@ -29,6 +29,70 @@ async function safeExecuteScript(tabId, func, args = []) {
   }
 }
 
+// Copy to clipboard and send to GAS, then show toast
+async function sendToSheet(tab, title, url) {
+  const tabAccessible = isTabAccessible(tab);
+
+  // Copy to clipboard
+  const clipboardText = `${title}\t${url}`;
+  if (tabAccessible) {
+    await safeExecuteScript(tab.id, (text) => {
+      navigator.clipboard.writeText(text).catch(() => {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.cssText = "position:fixed;opacity:0;";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      });
+    }, [clipboardText]);
+  }
+
+  // Send to GAS Web App
+  const { gasUrl } = await chrome.storage.sync.get("gasUrl");
+  let sheetResult = false;
+
+  if (gasUrl) {
+    try {
+      const response = await fetch(gasUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, url }),
+        redirect: "follow",
+      });
+      sheetResult = response.ok;
+    } catch (err) {
+      console.error("GAS request failed:", err);
+    }
+  }
+
+  // Show toast notification
+  if (tabAccessible) {
+    const message = sheetResult
+      ? "コピー & スプレッドシートに追記しました"
+      : gasUrl
+        ? "コピーしました（スプレッドシート追記に失敗）"
+        : "コピーしました（GAS URLが未設定）";
+
+    await safeExecuteScript(tab.id, (msg) => {
+      const toast = document.createElement("div");
+      toast.textContent = msg;
+      toast.style.cssText =
+        "position:fixed;top:20px;right:20px;background:#333;color:#fff;" +
+        "padding:12px 24px;border-radius:8px;z-index:2147483647;" +
+        "font-size:14px;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);" +
+        "transition:opacity 0.3s;";
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 300);
+      }, 2000);
+    }, [message]);
+  }
+}
+
+// Context menu handler
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== "copyToSheet") return;
 
@@ -66,65 +130,25 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       url = tab?.url || info.pageUrl;
     }
 
-    // Copy to clipboard
-    const clipboardText = `${title}\t${url}`;
-    if (tabAccessible) {
-      await safeExecuteScript(tab.id, (text) => {
-        navigator.clipboard.writeText(text).catch(() => {
-          // Fallback for older browsers
-          const textarea = document.createElement("textarea");
-          textarea.value = text;
-          textarea.style.cssText = "position:fixed;opacity:0;";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          document.body.removeChild(textarea);
-        });
-      }, [clipboardText]);
-    }
-
-    // Send to GAS Web App (independent of tab state)
-    const { gasUrl } = await chrome.storage.sync.get("gasUrl");
-    let sheetResult = false;
-
-    if (gasUrl) {
-      try {
-        const response = await fetch(gasUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, url }),
-          redirect: "follow",
-        });
-        sheetResult = response.ok;
-      } catch (err) {
-        console.error("GAS request failed:", err);
-      }
-    }
-
-    // Show toast notification (only if tab is accessible)
-    if (tabAccessible) {
-      const message = sheetResult
-        ? "コピー & スプレッドシートに追記しました"
-        : gasUrl
-          ? "コピーしました（スプレッドシート追記に失敗）"
-          : "コピーしました（GAS URLが未設定）";
-
-      await safeExecuteScript(tab.id, (msg) => {
-        const toast = document.createElement("div");
-        toast.textContent = msg;
-        toast.style.cssText =
-          "position:fixed;top:20px;right:20px;background:#333;color:#fff;" +
-          "padding:12px 24px;border-radius:8px;z-index:2147483647;" +
-          "font-size:14px;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);" +
-          "transition:opacity 0.3s;";
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = "0";
-          setTimeout(() => toast.remove(), 300);
-        }, 2000);
-      }, [message]);
-    }
+    await sendToSheet(tab, title, url);
   } catch (err) {
     console.error("Context menu action failed:", err);
+  }
+});
+
+// Keyboard shortcut handler
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "send-page-to-sheet") return;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+
+    const title = tab.title || "Untitled";
+    const url = tab.url;
+
+    await sendToSheet(tab, title, url);
+  } catch (err) {
+    console.error("Keyboard shortcut action failed:", err);
   }
 });
